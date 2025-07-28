@@ -13,7 +13,7 @@ Questa documentazione descrive come automatizzare il processo di **build, test e
 
 - `main`: contiene la versione stabile in produzione.
 - `development`: contiene la versione attiva per i test.
-- `feature/*`: branch temporanei per lo sviluppo di funzionalità. Nascono da `development`.
+- `development-*`: branch temporanei per lo sviluppo di funzionalità. Nascono da `development`.
 
 ---
 
@@ -21,7 +21,7 @@ Questa documentazione descrive come automatizzare il processo di **build, test e
 
 Per abilitare il deploy automatico su SAP BTP Cloud Foundry, è necessario:
 
-### 1. Configurare i segreti nel repository GitHub
+### 1. Configurare le variabili nel repository GitHub
 
 Vai in `Settings > Secrets and variables > Actions` e aggiungi:
 
