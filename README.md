@@ -1,56 +1,135 @@
+Ecco il tuo `README.md` formattato in modo coerente, con una numerazione logica dei paragrafi, utilizzo omogeneo delle emoji e sezioni ben organizzate:
+
+---
+
 # 📦 CI/CD Pipeline per Applicazioni su SAP BTP (Cloud Foundry)
 
 ## ✨ Obiettivo
 
-Questa documentazione descrive come automatizzare il processo di **build e deploy** per applicazioni in esecuzione su **SAP BTP con Cloud Foundry**, utilizzando **GitHub Actions**. Sono previsti due ambienti:
+Questa documentazione descrive come automatizzare il processo di **build e deploy** per applicazioni in esecuzione su **SAP BTP con Cloud Foundry**, utilizzando **GitHub Actions**.
+Sono previsti due ambienti:
 
-- **Ambiente di test** (branch: `development`)
-- **Ambiente di produzione** (branch: `main`)
-
----
-
-## 🏗️ Struttura dei Branch
-
-- `main`: contiene la versione stabile in produzione.
-- `development`: contiene la versione attiva per i test.
-- `development-*`: branch temporanei per lo sviluppo di funzionalità. Nascono da `development`.
+* **Ambiente di test** (`development`)
+* **Ambiente di produzione** (`main`)
 
 ---
 
-## 🔧 Prerequisiti
+## 1️⃣ Struttura dei Branch
 
-Per abilitare il deploy automatico su SAP BTP Cloud Foundry, è necessario:
+* `main`: contiene la versione stabile in produzione.
+* `development`: contiene la versione attiva per i test.
+* `development-*`: branch temporanei per lo sviluppo di funzionalità (feature branch). Nascono da `development`.
 
-## 1. Configurare gli environment e le variabili nel repository GitHub
+---
 
-Per abilitare il deploy automatico su **SAP BTP Cloud Foundry**, è necessario configurare due environment nel repository GitHub e associare le variabili e i secret richiesti per ciascun ambiente.
+## 2️⃣ Prerequisiti
 
-### 🔧 Creazione degli environment
+### 2.1 🔐 Configurare gli environment e le variabili nel repository GitHub
 
-Vai in `Settings > Secrets and variables > Actions` e crea **due environment**:
+Per abilitare il deploy automatico su **SAP BTP Cloud Foundry**, è necessario configurare due **environment** nel repository GitHub e associare variabili e secret richiesti per ciascun ambiente.
+
+#### ✨ Creazione degli environment
+
+Vai in `Settings > Secrets and variables > Actions` e crea:
 
 * `CI-CD-DEV` – per il deploy nello **space di test**
-* `CI-CD-PROD` – per il deploy nello **space di produzione**
+* `CI-CD-PRD` – per il deploy nello **space di produzione**
 
-All'interno di ciascun environment, configura le seguenti variabili e secret:
+#### 🧾 Variabili richieste
 
-| Nome            | Descrizione                                                              | Tipo                  | Environment       |
-| --------------- | ------------------------------------------------------------------------ | --------------------- | ----------------- |
-| `CF_API`        | URL dell’API Cloud Foundry (es: `https://api.cf.eu10.hana.ondemand.com`) | Variabile di ambiente | Entrambi          |
-| `CF_ORG`        | Nome dell'organizzazione (es: `my-org`)                                  | Variabile di ambiente | Entrambi          |
-| `CF_SPACE_DEV`  | Nome dello space BTP per l’ambiente di test                              | Variabile di ambiente | Solo `CI-CD-DEV`  |
-| `CF_SPACE_PROD` | Nome dello space BTP per l’ambiente di produzione                        | Variabile di ambiente | Solo `CI-CD-PROD` |
-| `CF_USERNAME`   | Utente Cloud Foundry (service key o account tecnico)                     | Variabile di ambiente | Entrambi          |
-| `CF_PASSWORD`   | Password dell’utente                                                     | **Secret**            | Entrambi          |
+| Nome            | Descrizione                                                              | Tipo                  | Environment      |
+| --------------- | ------------------------------------------------------------------------ | --------------------- | ---------------- |
+| `CF_API`        | URL dell’API Cloud Foundry (es: `https://api.cf.eu10.hana.ondemand.com`) | Variabile di ambiente | Entrambi         |
+| `CF_ORG`        | Nome dell'organizzazione (es: `my-org`)                                  | Variabile di ambiente | Entrambi         |
+| `CF_SPACE_DEV`  | Nome dello space BTP per l’ambiente di test                              | Variabile di ambiente | Solo `CI-CD-DEV` |
+| `CF_SPACE_PROD` | Nome dello space BTP per l’ambiente di produzione                        | Variabile di ambiente | Solo `CI-CD-PRD` |
+| `CF_USERNAME`   | Utente Cloud Foundry (service key o account tecnico)                     | Variabile di ambiente | Entrambi         |
+| `CF_PASSWORD`   | Password dell’utente Cloud Foundry                                       | **Secret**            | Entrambi         |
 
-> ⚠️ **Nota**:
->
-> * `CF_PASSWORD` deve essere sempre configurato come **secret**, in quanto contiene credenziali sensibili.
-> * Le altre voci possono essere configurate come **variabili di ambiente**.
+> ⚠️ `CF_PASSWORD` deve essere **configurato come secret**, perché contiene credenziali sensibili.
+> Le altre voci possono essere definite come **variabili di ambiente**.
 
 ---
 
-### 2. `deploy-dev.yml` - Deploy in ambiente di test
+## 3️⃣ Struttura del Repository
+
+La seguente struttura supporta una pipeline CI/CD per SAP BTP Cloud Foundry, con ambienti separati, test automatici e parametrizzazione centralizzata.
+
+```
+.
+├── .github/
+│   └── workflows/
+│       ├── deploy-dev.yml     # Pipeline CI/CD per ambiente di sviluppo (CI-CD-DEV)
+│       └── deploy-prd.yml     # Pipeline CI/CD per ambiente di produzione (CI-CD-PRD)
+│
+├── .staging/
+│   ├── manifest-dev.yml       # Configurazione Cloud Foundry per ambiente di sviluppo
+│   └── manifest-prd.yml       # Configurazione Cloud Foundry per ambiente di produzione
+│
+├── unit-test/
+│   └── *.test.js              # Test unitari (es. server.test.js), eseguiti automaticamente prima del deploy
+│
+├── manifest.yml               # File temporaneo sovrascritto dallo script CI/CD
+├── server.js                  # App Node.js (Express)
+├── package.json               # Script di build/test e dipendenze
+└── README.md                  # Documentazione
+```
+
+### 📌 Convenzioni
+
+* **Pattern di naming dei test:** `*.test.js`
+* **Cartella test:** `unit-test/`
+* **Test automatici:** eseguiti in ogni pipeline CI/CD (`npm test`)
+* **Manifest per ambiente:** mantenuti in `.staging/` e selezionati dinamicamente dalla pipeline
+
+---
+
+## 4️⃣ Configurazione dei manifest Cloud Foundry
+
+Per ambienti separati, NON modificare direttamente `manifest.yml`.
+Invece, crea due file nella cartella `.staging/`:
+
+```
+.staging/
+├── manifest-dev.yml
+└── manifest-prd.yml
+```
+
+### 🧾 Esempio `manifest-dev.yml`
+
+```yaml
+applications:
+  - name: nome-app-dev
+    memory: 256M
+    instances: 1
+    path: .
+    buildpacks:
+      - nodejs_buildpack
+    env:
+      ENV: dev
+```
+
+### 🧾 Esempio `manifest-prd.yml`
+
+```yaml
+applications:
+  - name: nome-app
+    memory: 512M
+    instances: 2
+    path: .
+    buildpacks:
+      - nodejs_buildpack
+    env:
+      ENV: prod
+```
+
+> ⚙️ Durante il deploy, il workflow selezionerà automaticamente il manifest corretto e lo copierà come `manifest.yml`.
+
+---
+
+## 5️⃣ Esempi di Workflow
+
+### 5.1 🚀 Deploy in ambiente di sviluppo (`deploy-dev.yml`)
 
 ```yaml
 name: Deploy to Dev (Cloud Foundry)
@@ -69,8 +148,15 @@ jobs:
       - name: 🔄 Checkout codice
         uses: actions/checkout@v4
 
+      - name: 🧪 Installa dipendenze e lancia i test
+        run: |
+          echo "📦 Installo dipendenze..."
+          npm install
+          echo "🧪 Eseguo test unitari..."
+          npm test
+
       - name: Usa manifest per ambiente Dev
-        run: cp manifest-dev.yml manifest.yml
+        run: cp .staging/manifest-dev.yml manifest.yml
 
 
       - name: 🔧 Installa cf CLI via dpkg
@@ -98,7 +184,7 @@ jobs:
 
 ---
 
-### 3. `deploy-prod.yml` - Deploy in produzione
+### 5.2 🚀 Deploy in ambiente di produzione (`deploy-prd.yml`)
 
 ```yaml
 name: Deploy to Prd (Cloud Foundry)
@@ -117,9 +203,16 @@ jobs:
       - name: 🔄 Checkout codice
         uses: actions/checkout@v4
 
-      - name: Usa manifest per ambiente Prd
-        run: cp manifest-prd.yml manifest.yml
+      - name: 🧪 Installa dipendenze e lancia i test
+        run: |
+          echo "📦 Installo dipendenze..."
+          npm install
+          echo "🧪 Eseguo test unitari..."
+          npm test
 
+      - name: 📄 Usa manifest per ambiente Prd
+        run: cp .staging/manifest-prd.yml manifest.yml
+        
 
       - name: 🔧 Installa cf CLI via dpkg
         run: |
@@ -146,67 +239,14 @@ jobs:
 
 ---
 
-Ecco la sezione **modificata e ampliata** per includere l’uso dei file `manifest-dev.yml` e `manifest-prd.yml` nella cartella `staging`, come richiesto:
+## 6️⃣ ✅ Riepilogo Pipeline
+
+| Branch          | Ambiente   | Azione                          |
+| --------------- | ---------- | ------------------------------- |
+| `development-*` | Nessuno    | Test e lint (CI)                |
+| `development`   | Test (dev) | Deploy automatico su dev        |
+| `main`          | Produzione | Deploy automatico su produzione |
 
 ---
 
-## 📁 File `manifest.yml` (configurazione per ambienti)
-
-Per gestire in modo efficace il deploy su diversi ambienti (dev e prod), è consigliato **non modificare direttamente** il file `manifest.yml` nella root del progetto.
-Invece, crea due file distinti all'interno di una cartella chiamata `staging`:
-
-```
-staging/
-├── manifest-dev.yml
-└── manifest-prd.yml
-```
-
-Questi file conterranno le configurazioni specifiche per ciascun ambiente (ad esempio lo space, le variabili, ecc.).
-
-### Esempio di `staging/manifest-dev.yml`
-
-```yaml
-applications:
-  - name: nome-app-dev
-    memory: 256M
-    instances: 1
-    path: .
-    buildpacks:
-      - nodejs_buildpack
-    env:
-      ENV: dev
-```
-
-### Esempio di `staging/manifest-prd.yml`
-
-```yaml
-applications:
-  - name: nome-app
-    memory: 512M
-    instances: 2
-    path: .
-    buildpacks:
-      - nodejs_buildpack
-    env:
-      ENV: prod
-```
-
-> ⚙️ **Deploy automatico**
-> Durante l'esecuzione del workflow CI/CD, lo script di deploy selezionerà automaticamente il file corretto (`manifest-dev.yml` o `manifest-prd.yml`) dalla cartella `staging`, **lo copierà e sovrascriverà** come `manifest.yml` nella root del progetto, che è il file atteso dal comando `cf push`.
-
----
-
-Fammi sapere se vuoi aggiungere anche uno snippet dello script che gestisce questa logica.
-
-
----
-
-## ✅ Riepilogo Pipeline
-
-| Branch        | Ambiente      | Azione                         |
-|---------------|---------------|--------------------------------|
-| `development-*`   | Nessuno       | Test e Lint (CI)               |
-| `development` | Test (dev)    | Deploy automatico su dev       |
-| `main`        | Produzione    | Deploy automatico su produzione|
-
----
+Fammi sapere se vuoi allegare anche uno schema visivo (mermaid, PlantUML o SVG) della pipeline o un badge GitHub Actions per il build status.
