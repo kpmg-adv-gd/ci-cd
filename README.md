@@ -2,7 +2,7 @@
 
 ## ✨ Obiettivo
 
-Questa documentazione descrive come automatizzare il processo di **build, test e deploy** per applicazioni in esecuzione su **SAP BTP con Cloud Foundry**, utilizzando **GitHub Actions**. Sono previsti due ambienti:
+Questa documentazione descrive come automatizzare il processo di **build e deploy** per applicazioni in esecuzione su **SAP BTP con Cloud Foundry**, utilizzando **GitHub Actions**. Sono previsti due ambienti:
 
 - **Ambiente di test** (branch: `development`)
 - **Ambiente di produzione** (branch: `main`)
@@ -21,52 +21,32 @@ Questa documentazione descrive come automatizzare il processo di **build, test e
 
 Per abilitare il deploy automatico su SAP BTP Cloud Foundry, è necessario:
 
-### 1. Configurare le variabili nel repository GitHub
+## 1. Configurare gli environment e le variabili nel repository GitHub
 
-Vai in `Settings > Secrets and variables > Actions` e aggiungi:
+Per abilitare il deploy automatico su **SAP BTP Cloud Foundry**, è necessario configurare due environment nel repository GitHub e associare le variabili e i secret richiesti per ciascun ambiente.
 
-| Nome              | Descrizione                                                   |
-|-------------------|---------------------------------------------------------------|
-| `CF_API`          | URL dell’API Cloud Foundry (es: `https://api.cf.eu10.hana.ondemand.com`) |
-| `CF_ORG`          | Nome dell'organizzazione (es: `my-org`)                       |
-| `CF_SPACE_DEV`    | Nome dello space BTP per l’ambiente di test                   |
-| `CF_SPACE_PROD`   | Nome dello space BTP per l’ambiente di produzione             |
-| `CF_USERNAME`     | Utente Cloud Foundry (service key o account tecnico)          |
-| `CF_PASSWORD`     | Password dell’utente                                           |
+### 🔧 Creazione degli environment
 
----
+Vai in `Settings > Secrets and variables > Actions` e crea **due environment**:
 
-## ⚙️ File della Pipeline
+* `CI-CD-DEV` – per il deploy nello **space di test**
+* `CI-CD-PROD` – per il deploy nello **space di produzione**
 
-### 1. `ci.yml` - Build, Test e Lint
+All'interno di ciascun environment, configura le seguenti variabili e secret:
 
-```yaml
-name: CI Build & Test
+| Nome            | Descrizione                                                              | Tipo                  | Environment       |
+| --------------- | ------------------------------------------------------------------------ | --------------------- | ----------------- |
+| `CF_API`        | URL dell’API Cloud Foundry (es: `https://api.cf.eu10.hana.ondemand.com`) | Variabile di ambiente | Entrambi          |
+| `CF_ORG`        | Nome dell'organizzazione (es: `my-org`)                                  | Variabile di ambiente | Entrambi          |
+| `CF_SPACE_DEV`  | Nome dello space BTP per l’ambiente di test                              | Variabile di ambiente | Solo `CI-CD-DEV`  |
+| `CF_SPACE_PROD` | Nome dello space BTP per l’ambiente di produzione                        | Variabile di ambiente | Solo `CI-CD-PROD` |
+| `CF_USERNAME`   | Utente Cloud Foundry (service key o account tecnico)                     | Variabile di ambiente | Entrambi          |
+| `CF_PASSWORD`   | Password dell’utente                                                     | **Secret**            | Entrambi          |
 
-on:
-  push:
-    branches: ['**']
-
-jobs:
-  build-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup ambiente
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Installazione dipendenze
-        run: npm ci
-
-      - name: Esecuzione test
-        run: npm test
-
-      - name: Linting
-        run: npm run lint
-```
+> ⚠️ **Nota**:
+>
+> * `CF_PASSWORD` deve essere sempre configurato come **secret**, in quanto contiene credenziali sensibili.
+> * Le altre voci possono essere configurate come **variabili di ambiente**.
 
 ---
 
@@ -83,24 +63,37 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: CI-CD-DEV
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 🔄 Checkout codice
+        uses: actions/checkout@v4
 
-      - name: Installazione CLI Cloud Foundry
+      - name: Usa manifest per ambiente Dev
+        run: cp manifest-dev.yml manifest.yml
+
+
+      - name: 🔧 Installa cf CLI via dpkg
         run: |
-          curl -L "https://packages.cloudfoundry.org/stable?release=linux64" -o cf-cli.tgz
-          tar -xzf cf-cli.tgz
-          sudo mv cf /usr/local/bin
+          echo "📦 Scarico pacchetto Debian cf CLI..."
+          curl -L "https://packages.cloudfoundry.org/stable?release=debian64" -o cf.deb
+          sudo dpkg -i cf.deb
+          cf version
 
-      - name: Login su Cloud Foundry
+      - name: 🔐 Login su Cloud Foundry
         run: |
-          cf api ${{ secrets.CF_API }}
-          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
-          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE_DEV }}
+          set -e
+          echo "🌐 API endpoint: ${{ vars.CF_API }}"
+          echo "👤 Login con utente: ${{ vars.CF_USERNAME }}"
+          cf login -a '${{ vars.CF_API }}' -u '${{ vars.CF_USERNAME }}' -p '${{ secrets.CF_PASSWORD }}' -o '${{ vars.CF_ORG }}' -s '${{ vars.CF_SPACE_DEV }}'
 
-      - name: Deploy su ambiente Dev
-        run: cf push --var ENV=dev
+      - name: 🚀 Deploy su ambiente Dev
+        run: |
+          set -e
+          echo "📂 Lista file in workspace:"
+          ls -la
+          echo "📦 Avvio cf push..."
+          cf push --var ENV=dev
 ```
 
 ---
@@ -108,7 +101,7 @@ jobs:
 ### 3. `deploy-prod.yml` - Deploy in produzione
 
 ```yaml
-name: Deploy to Production (Cloud Foundry)
+name: Deploy to Prd (Cloud Foundry)
 
 on:
   push:
@@ -118,44 +111,93 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://<tuo-url-produzione>  # opzionale
+    environment: CI-CD-PRD
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 🔄 Checkout codice
+        uses: actions/checkout@v4
 
-      - name: Installazione CLI Cloud Foundry
+      - name: Usa manifest per ambiente Prd
+        run: cp manifest-prd.yml manifest.yml
+
+
+      - name: 🔧 Installa cf CLI via dpkg
         run: |
-          curl -L "https://packages.cloudfoundry.org/stable?release=linux64" -o cf-cli.tgz
-          tar -xzf cf-cli.tgz
-          sudo mv cf /usr/local/bin
+          echo "📦 Scarico pacchetto Debian cf CLI..."
+          curl -L "https://packages.cloudfoundry.org/stable?release=debian64" -o cf.deb
+          sudo dpkg -i cf.deb
+          cf version
 
-      - name: Login su Cloud Foundry
+      - name: 🔐 Login su Cloud Foundry
         run: |
-          cf api ${{ secrets.CF_API }}
-          cf auth ${{ secrets.CF_USERNAME }} ${{ secrets.CF_PASSWORD }}
-          cf target -o ${{ secrets.CF_ORG }} -s ${{ secrets.CF_SPACE_PROD }}
+          set -e
+          echo "🌐 API endpoint: ${{ vars.CF_API }}"
+          echo "👤 Login con utente: ${{ vars.CF_USERNAME }}"
+          cf login -a '${{ vars.CF_API }}' -u '${{ vars.CF_USERNAME }}' -p '${{ secrets.CF_PASSWORD }}' -o '${{ vars.CF_ORG }}' -s '${{ vars.CF_SPACE_PROD }}'
 
-      - name: Deploy in Produzione
-        run: cf push --var ENV=prod
+      - name: 🚀 Deploy su ambiente Prd
+        run: |
+          set -e
+          echo "📂 Lista file in workspace:"
+          ls -la
+          echo "📦 Avvio cf push..."
+          cf push --var ENV=prd
 ```
 
 ---
 
-## 📁 File `manifest.yml` (esempio)
+Ecco la sezione **modificata e ampliata** per includere l’uso dei file `manifest-dev.yml` e `manifest-prd.yml` nella cartella `staging`, come richiesto:
+
+---
+
+## 📁 File `manifest.yml` (configurazione per ambienti)
+
+Per gestire in modo efficace il deploy su diversi ambienti (dev e prod), è consigliato **non modificare direttamente** il file `manifest.yml` nella root del progetto.
+Invece, crea due file distinti all'interno di una cartella chiamata `staging`:
+
+```
+staging/
+├── manifest-dev.yml
+└── manifest-prd.yml
+```
+
+Questi file conterranno le configurazioni specifiche per ciascun ambiente (ad esempio lo space, le variabili, ecc.).
+
+### Esempio di `staging/manifest-dev.yml`
 
 ```yaml
 applications:
-  - name: nome-app
+  - name: nome-app-dev
     memory: 256M
     instances: 1
     path: .
     buildpacks:
       - nodejs_buildpack
     env:
-      ENV: ((ENV))
+      ENV: dev
 ```
+
+### Esempio di `staging/manifest-prd.yml`
+
+```yaml
+applications:
+  - name: nome-app
+    memory: 512M
+    instances: 2
+    path: .
+    buildpacks:
+      - nodejs_buildpack
+    env:
+      ENV: prod
+```
+
+> ⚙️ **Deploy automatico**
+> Durante l'esecuzione del workflow CI/CD, lo script di deploy selezionerà automaticamente il file corretto (`manifest-dev.yml` o `manifest-prd.yml`) dalla cartella `staging`, **lo copierà e sovrascriverà** come `manifest.yml` nella root del progetto, che è il file atteso dal comando `cf push`.
+
+---
+
+Fammi sapere se vuoi aggiungere anche uno snippet dello script che gestisce questa logica.
+
 
 ---
 
@@ -163,56 +205,8 @@ applications:
 
 | Branch        | Ambiente      | Azione                         |
 |---------------|---------------|--------------------------------|
-| `feature/*`   | Nessuno       | Test e Lint (CI)               |
+| `development-*`   | Nessuno       | Test e Lint (CI)               |
 | `development` | Test (dev)    | Deploy automatico su dev       |
 | `main`        | Produzione    | Deploy automatico su produzione|
 
 ---
-
-## 🔁 Rollback del Deploy in Produzione
-
-### 🎯 Obiettivo
-
-Il rollback consente di **ripristinare una versione precedente** dell'applicazione nel caso in cui un deploy in produzione causi errori o malfunzionamenti.
-
-### ⚙️ Approcci al rollback in Cloud Foundry
-
-Cloud Foundry **non ha un comando "rollback" diretto**. Tuttavia, ci sono tre strategie per gestirlo:
-
-### ✅ 1. Versionamento dei deploy
-
-```bash
-git checkout tags/<tag_versione_stabile>
-cf push --var ENV=prod
-```
-
-GitHub Action per tagging:
-
-```yaml
-- name: Tag produzione
-  run: |
-    git config --global user.email "ci@bot.com"
-    git config --global user.name "CI Bot"
-    git tag prod-$(date +%Y%m%d-%H%M%S)
-    git push origin --tags
-```
-
-### 🔁 2. Blue-green deploy
-
-```bash
-cf push my-app-v2 -f manifest.yml --no-start
-cf map-route my-app-v2 my.domain.com --hostname my-app
-cf stop my-app
-cf delete my-app -f
-cf rename my-app-v2 my-app
-```
-
-### 🛑 3. Snapshot manuale
-
-Salva `manifest.yml`, env vars, artefatti per versioni stabili.
-
----
-
-## ✉️ Contatti
-
-Per domande o modifiche alla pipeline, contattare il team DevOps interno o l’amministratore SAP BTP dell’organizzazione.
